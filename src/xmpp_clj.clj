@@ -1,30 +1,30 @@
 (ns xmpp-clj
-  (:import [org.jivesoftware.smack 
-	    Chat 
-	    ChatManager 
-	    ConnectionConfiguration 
-	    MessageListener
-	    SASLAuthentication
-	    XMPPConnection
-	    XMPPException
-	    PacketListener]
-	   [org.jivesoftware.smack.packet Message Presence Presence$Type Message$Type]
-	   [org.jivesoftware.smack.filter MessageTypeFilter]
-	   [org.jivesoftware.smack.util StringUtils]))
+  (:import [org.jivesoftware.smack
+            Chat
+            ChatManager
+            ConnectionConfiguration
+            MessageListener
+            SASLAuthentication
+            XMPPConnection
+            XMPPException
+            PacketListener]
+           [org.jivesoftware.smack.packet Message Presence Presence$Type Message$Type]
+           [org.jivesoftware.smack.filter MessageTypeFilter]
+           [org.jivesoftware.smack.util StringUtils]))
 
 (defonce *available-presence* (Presence. Presence$Type/available))
 
 (defonce *chat-message-type-filter* (MessageTypeFilter. Message$Type/chat))
 
 (defn packet-listener [conn processor]
-     (proxy 
-	 [PacketListener] 
-	 []
+     (proxy
+         [PacketListener]
+         []
        (processPacket [packet] (processor conn packet))))
 
 
 (defn mapify-error [e]
-  (if (nil? e) 
+  (if (nil? e)
     nil
     {:code (.getCode e) :message (.getMessage e)}))
 
@@ -49,7 +49,7 @@
 (defn create-reply [from-message-map to-message-body]
   (try
    (let [to (:from from-message-map)
-	 rep (Message.)]
+         rep (Message.)]
      (.setTo rep to)
      (.setBody rep (str to-message-body))
      rep)
@@ -73,9 +73,9 @@
 
 (defn start-bot
   "Defines and starts an instant messaging bot that will respond to incoming
-   messages. start-bot takes 2 parameters, the first is a map representing 
+   messages. start-bot takes 2 parameters, the first is a map representing
    the data needed to make a connection to the jabber server:
-   
+
    connnect-info example:
    {:host \"talk.google.com\"
     :domain \"gmail.com\"
@@ -101,15 +101,19 @@
    "
   [connect-info packet-processor]
   (let [un (:username connect-info)
-	pw (:password connect-info)
-	host (:host connect-info)
-	domain (:domain connect-info)
-	connect-config (ConnectionConfiguration. host 5222 domain)
-	conn (XMPPConnection. connect-config)]
+        pw (:password connect-info)
+        host (:host connect-info)
+        domain (:domain connect-info)
+        connect-config (ConnectionConfiguration. host 5222 domain)
+        conn (XMPPConnection. connect-config)]
     (.connect conn)
     (.login conn un pw)
     (.sendPacket conn *available-presence*)
-    (.addPacketListener conn (packet-listener conn (with-message-map (wrap-responder packet-processor))) *chat-message-type-filter*)
+    (.addPacketListener conn (packet-listener
+                              conn
+                              (with-message-map
+                                (wrap-responder packet-processor)))
+                        *chat-message-type-filter*)
     conn))
 
 (defn stop-bot [#^XMPPConnection conn]
