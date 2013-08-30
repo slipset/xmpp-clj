@@ -2,10 +2,19 @@
 
 xmpp-clj allows you to write simple jabber bots in idiomatic clojure by providing a lightweight wrapper around the [smack](http://www.igniterealtime.org/projects/smack/) library.
 
+This version is compatible with hipchat from atlassian.
+
 ## Lein
 
-    [xmpp-clj "0.3.1"]
+    [name.benjaminpeter/xmpp-clj "0.3.2"]
 
+## Get the current smack library
+
+    Download http://www.igniterealtime.org/downloadServlet?filename=smack/smack_3_3_0.tar.gz
+    tar xvzf smack_3_3_0.tar.gz
+    cd smack_3_3_0
+    mvn install:install-file -Dfile=smack.jar -DgroupId=jivesoftware -DartifactId=smack -Dversion=3.3.0 -Dpackaging=jar
+    mvn install:install-file -Dfile=smackx.jar -DgroupId=jivesoftware -DartifactId=smackx -Dversion=3.3.0 -Dpackaging=jar
 
 ## Usage
 
@@ -91,7 +100,7 @@ namespace.
 
 ## Problems?
 
-Open up an [issue](http://github.com/zkim/xmpp-clj/issues)
+Open up an [issue](http://github.com/dedeibel/xmpp-clj/issues)
 
 ## License
 
