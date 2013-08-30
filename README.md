@@ -6,7 +6,7 @@ This version is compatible with hipchat from atlassian.
 
 ## Lein
 
-    [name.benjaminpeter/xmpp-clj "0.3.2"]
+    [name.benjaminpeter/xmpp-clj "0.3.3"]
 
 ## Get the current smack library
 
@@ -19,21 +19,21 @@ This version is compatible with hipchat from atlassian.
 ## Usage
 
 Create a temporary jabber account for your bot.  I've used gmail here, but there are a bunch of free providers
-<br />  
-  
+<br />
+
 Create a leiningen project and cd into the project directory
 
     lein new mybot
     cd ./mybot
-<br />  
-  
+<br />
+
 Add xmpp-clj to your deps (project.clj):
 
     (defproject mybot "0.1.0"
       :description "FIXME: write"
       :dependencies [[xmpp-clj "0.3.1"]])
 <br />
-  
+
 Open up src/mybot/core.clj and require the xmpp lib:
 
     (ns mybot.core
@@ -56,7 +56,7 @@ example:
 Next, fire up your chat client, add your new bot buddy, and send him /
 her a message.  The response should look someting like this:
 
-> me: hello chatbot  
+> me: hello chatbot
 
 > chatbot: Ermahgerd!!!
 
@@ -92,11 +92,15 @@ her a message.  The response should look someting like this:
 
 
 
-See the `src/xmpp_clj/examples` folder for additional examples. If
-you'd like to manually manage connections, see the `xmpp-clj.bot`
-namespace.
+See the `src/xmpp_clj/examples` folder for additional examples,
+including MUC chat. If you'd like to manually manage connections, see
+the `xmpp-clj.bot` namespace.
 
-<br />  
+<br />
+
+## Debugging
+
+Use `-Dsmack.debugEnabled=true` to enable xmpp protocol output.
 
 ## Problems?
 
