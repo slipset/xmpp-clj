@@ -5,3 +5,4 @@ classes
 .DS_Store
 .lein-*
 target
+*.swp
