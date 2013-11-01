@@ -6,7 +6,7 @@ This version is compatible with hipchat from atlassian.
 
 ## Lein
 
-    [name.benjaminpeter/xmpp-clj "0.3.2"]
+    [name.benjaminpeter/xmpp-clj "0.3.3"]
 
 ## Get the current smack library
 
@@ -96,7 +96,9 @@ See the `src/xmpp_clj/examples` folder for additional examples,
 including MUC chat. If you'd like to manually manage connections, see
 the `xmpp-clj.bot` namespace.
 
-<br />
+## Debugging
+
+Use `-Dsmack.debugEnabled=true` to enable xmpp protocol output.
 
 ## Problems?
 
