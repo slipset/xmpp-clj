@@ -52,8 +52,7 @@
 (defn create-reply [from-message-map to-message-body field]
   (try
    (let [to (field from-message-map)
-         rep (Message.)]
-     (.setTo rep to)
+	 rep (Message. to Message$Type/chat)]
      (.setBody rep (str to-message-body))
      (.setType rep (:type from-message-map))
      rep)
