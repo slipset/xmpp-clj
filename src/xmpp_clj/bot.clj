@@ -29,6 +29,9 @@
     nil
     {:code (.getCode e) :message (.getMessage e)}))
 
+(defn extract-delay [#^Message m]
+  (some-> (.getExtension m "urn:xmpp:delay") (.getStamp)))
+
 (defn message->map [#^Message m]
   (try
    {:body (.getBody m)
@@ -40,14 +43,14 @@
     :to (.getTo m)
     :packet-id (.getPacketID m)
     :error (error->map (.getError m))
-    :type (.getType m)}
-   (catch Exception e (println e) {})))
-
+    :type (.getType m)
+    :delay (extract-delay m)}
+   (catch Exception e (.printStackTrace e) {})))
 
 (defn parse-address [from]
   (try
    (first (.split from "/"))
-   (catch Exception e (println e) from)))
+   (catch Exception e (.printStackTrace e))))
 
 (defn create-reply [from-message-map to-message-body field]
   (try
@@ -56,7 +59,7 @@
      (.setBody rep (str to-message-body))
      (.setType rep (:type from-message-map))
      rep)
-   (catch Exception e (println e))))
+   (catch Exception e (.printStackTrace e))))
 
 
 (defn reply [from-message-map to-message-body conn reply-address-field]
@@ -67,7 +70,7 @@
     (let [message (message->map #^Message packet)]
       (try
        (handler conn message)
-       (catch Exception e (println e))))))
+       (catch Exception e (.printStackTrace e))))))
 
 (defn wrap-responder [handler reply-address-field]
   (fn [conn message]
@@ -107,6 +110,9 @@
                                       response-address-field)))
    message-type-filter))
 
+(defn listen [connection packet-processor]
+  (add-listener connection packet-processor chat-message-type-filter :from)
+    connection)
 
 (defn start
   "Defines and starts an instant messaging bot that will respond to incoming
@@ -137,11 +143,7 @@
            see javadoc for org.jivesoftware.smack.packet.Message>}
    "
   [connect-info packet-processor]
-  (let [conn (connect connect-info)]
-    (add-listener conn packet-processor chat-message-type-filter :from)
-    conn))
-
-
+  (listen (connect connect-info) packet-processor))
 
 (defn start-muc
   [connect-info packet-processor]
@@ -153,8 +155,7 @@
     (let [conn (connect connect-info)
           muc (MultiUserChat. conn room)]
       (.join muc nick nil no-history muc-join-timeout-ms)
-      (add-listener conn packet-processor groupchat-message-type-filter :from-name))))
-
+      (add-listener conn packet-processor groupchat-message-type-filter :from))))
 
 (defn stop [#^XMPPConnection conn]
   (when conn
