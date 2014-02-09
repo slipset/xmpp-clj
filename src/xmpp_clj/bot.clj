@@ -1,13 +1,13 @@
 (ns xmpp-clj.bot
   (:import [org.jivesoftware.smack
             Chat ChatManager ConnectionConfiguration MessageListener
-	    SASLAuthentication XMPPConnection XMPPException PacketListener]
-	   [org.jivesoftware.smack.packet
+            SASLAuthentication XMPPConnection XMPPException PacketListener]
+           [org.jivesoftware.smack.packet
             Message Presence Presence$Type Message$Type]
-	   [org.jivesoftware.smack.filter MessageTypeFilter]
-	   [org.jivesoftware.smack.util StringUtils]
-     [org.jivesoftware.smackx.muc
-      MultiUserChat DiscussionHistory]))
+           [org.jivesoftware.smack.filter MessageTypeFilter]
+           [org.jivesoftware.smack.util StringUtils]
+           [org.jivesoftware.smackx.muc
+            MultiUserChat DiscussionHistory InvitationListener]))
 
 (def available-presence (Presence. Presence$Type/available))
 
@@ -20,8 +20,8 @@
 
 (defn packet-listener [conn processor]
   (proxy
-      [PacketListener]
-      []
+    [PacketListener]
+    []
     (processPacket [packet] (processor conn packet))))
 
 (defn error->map [e]
@@ -34,43 +34,47 @@
 
 (defn message->map [#^Message m]
   (try
-   {:body (.getBody m)
-    :subject (.getSubject m)
-    :thread (.getThread m)
-    :from (.getFrom m)
-    :from-name (StringUtils/parseBareAddress (.getFrom m))
-    :from-nick (StringUtils/parseResource (.getFrom m))
-    :to (.getTo m)
-    :packet-id (.getPacketID m)
-    :error (error->map (.getError m))
-    :type (.getType m)
-    :delay (extract-delay m)}
-   (catch Exception e (.printStackTrace e) {})))
+    {:body (.getBody m)
+     :subject (.getSubject m)
+     :thread (.getThread m)
+     :from (.getFrom m)
+     :from-name (StringUtils/parseBareAddress (.getFrom m))
+     :from-nick (StringUtils/parseResource (.getFrom m))
+     :to (.getTo m)
+     :packet-id (.getPacketID m)
+     :error (error->map (.getError m))
+     :type (.getType m)
+     :delay (extract-delay m)}
+    (catch Exception e (.printStackTrace e) {})))
 
 (defn parse-address [from]
   (try
-   (first (.split from "/"))
-   (catch Exception e (.printStackTrace e))))
+    (first (.split from "/"))
+    (catch Exception e (.printStackTrace e))))
+
+(defn create-message [to type to-message-body]
+  (try
+    (let [rep (Message. to Message$Type/chat)]
+      (.setBody rep (str to-message-body))
+      (.setType rep type)
+      rep)
+    (catch Exception e (.printStackTrace e))))
+
+(defn send-message [conn to type to-message-body]
+  (.sendPacket conn (create-message to type to-message-body)))
 
 (defn create-reply [from-message-map to-message-body field]
-  (try
-   (let [to (field from-message-map)
-         rep (Message. to Message$Type/chat)]
-     (.setBody rep (str to-message-body))
-     (.setType rep (:type from-message-map))
-     rep)
-   (catch Exception e (.printStackTrace e))))
-
+  (create-message (field from-message-map) (:type from-message-map) to-message-body))
 
 (defn reply [from-message-map to-message-body conn reply-address-field]
-  (.sendPacket conn (create-reply from-message-map to-message-body reply-address-field)))
+  (send-message conn (create-reply from-message-map to-message-body reply-address-field)))
 
 (defn with-message-map [handler]
   (fn [conn packet]
     (let [message (message->map #^Message packet)]
       (try
-       (handler conn message)
-       (catch Exception e (.printStackTrace e))))))
+        (handler conn message)
+        (catch Exception e (.printStackTrace e))))))
 
 (defn wrap-responder [handler reply-address-field]
   (fn [conn message]
@@ -103,16 +107,37 @@
 
 (defn add-listener [conn packet-processor message-type-filter response-address-field]
   (.addPacketListener
-   conn
-   (packet-listener conn
-                    (with-message-map
-                      (wrap-responder packet-processor
-                                      response-address-field)))
-   message-type-filter))
+    conn
+    (packet-listener conn
+                     (with-message-map
+                       (wrap-responder packet-processor
+                                       response-address-field)))
+    message-type-filter))
+
+(defn- create-invitation-message [room inviter reason password message]
+  {
+   :room room
+   :inviter inviter
+   :reason reason
+   :password password
+   :message message
+   })
+
+(defn add-invitation-listener [conn handler]
+  (let [listener (reify InvitationListener
+                   (invitationReceived [this conn room inviter reason password message]
+                     (handler (create-invitation-message room inviter reason password message))))]
+    (MultiUserChat/addInvitationListener conn listener)))
+
+(defn decline-invitation [conn invitation reason]
+  (MultiUserChat/decline conn
+                         (:room invitation)
+                         (:inviter invitation)
+                         reason))
 
 (defn listen [connection packet-processor]
   (add-listener connection packet-processor chat-message-type-filter :from)
-    connection)
+  connection)
 
 (defn start
   "Defines and starts an instant messaging bot that will respond to incoming
@@ -121,9 +146,9 @@
 
    connnect-info example:
    {:host \"talk.google.com\"
-    :domain \"gmail.com\"
-    :username \"testclojurebot@gmail.com\"
-    :password \"clojurebot12345\"}
+  :domain \"gmail.com\"
+  :username \"testclojurebot@gmail.com\"
+  :password \"clojurebot12345\"}
 
    The second parameter expects a single-arg function, which is passed
    a map representing a message on receive. Return a string from this
@@ -132,15 +157,15 @@
 
    received message map example (nils are possible where n/a):
    {:body
-    :subject
-    :thread <Id used to correlate several messages, such as a converation>
-    :from <entire from id, ex. zachary.kim@gmail.com/Zachary KiE0124793>
-    :from-name <Just the 'name' from the 'from', ex. zachary.kim@gmail.com>
-    :to <To whom the message was sent, i.e. this bot>
-    :packet-id <donno>
-    :error <a map representing the error, if present>
-    :type <Type of message: normal, chat, group_chat, headline, error.
-           see javadoc for org.jivesoftware.smack.packet.Message>}
+   :subject
+   :thread <Id used to correlate several messages, such as a converation>
+   :from <entire from id, ex. zachary.kim@gmail.com/Zachary KiE0124793>
+   :from-name <Just the 'name' from the 'from', ex. zachary.kim@gmail.com>
+   :to <To whom the message was sent, i.e. this bot>
+   :packet-id <donno>
+   :error <a map representing the error, if present>
+   :type <Type of message: normal, chat, group_chat, headline, error.
+   see javadoc for org.jivesoftware.smack.packet.Message>}
    "
   [connect-info packet-processor]
   (listen (connect connect-info) packet-processor))
