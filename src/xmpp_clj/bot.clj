@@ -114,6 +114,12 @@
                                        response-address-field)))
     message-type-filter))
 
+(defn add-muc-listener [conn packet-processor]
+    (.addMessageListener conn
+                         (packet-listener conn
+                                          (with-message-map
+                                            (wrap-responder packet-processor conn)))))
+
 (defn- create-invitation-message [room inviter reason password message]
   {
    :room room
@@ -138,6 +144,7 @@
 (defn listen [connection packet-processor]
   (add-listener connection packet-processor chat-message-type-filter :from)
   connection)
+
 
 (defn start
   "Defines and starts an instant messaging bot that will respond to incoming
@@ -170,6 +177,11 @@
   [connect-info packet-processor]
   (listen (connect connect-info) packet-processor))
 
+(defn join [conn room nick packet-processor]
+  (let [muc (MultiUserChat. conn room)]
+    (.join muc nick nil no-history muc-join-timeout-ms)
+    muc))
+    
 (defn start-muc
   [connect-info packet-processor]
   (let [room (:room connect-info)
@@ -178,9 +190,9 @@
     (if-not room
       (throw (Exception. "Require a room to join.")))
     (let [conn (connect connect-info)
-          muc (MultiUserChat. conn room)]
-      (.join muc nick nil no-history muc-join-timeout-ms)
-      (add-listener conn packet-processor groupchat-message-type-filter :from))))
+          muc (join conn room nick packet-preocessor)]
+      (add-listener conn packet-processor groupchat-message-type-filter :from)
+      muc)))
 
 (defn stop [#^XMPPConnection conn]
   (when conn
