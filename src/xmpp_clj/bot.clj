@@ -177,7 +177,7 @@
   [connect-info packet-processor]
   (listen (connect connect-info) packet-processor))
 
-(defn join [conn room nick packet-processor]
+(defn join [conn room nick]
   (let [muc (MultiUserChat. conn room)]
     (.join muc nick nil no-history muc-join-timeout-ms)
     muc))
@@ -190,7 +190,7 @@
     (if-not room
       (throw (Exception. "Require a room to join.")))
     (let [conn (connect connect-info)
-          muc (join conn room nick packet-preocessor)]
+          muc (join conn room nick packet-processor)]
       (add-listener conn packet-processor groupchat-message-type-filter :from)
       muc)))
 
