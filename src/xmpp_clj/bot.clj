@@ -82,6 +82,10 @@
       (when resp
         (reply message resp conn reply-address-field)))))
 
+(defn wrap-muc-responder [handler out]
+  (fn [muc message]
+    (if-let [resp (handler message)]
+      (.sendMessage out resp))))
 
 (defn connect
   [connect-info]
@@ -118,7 +122,7 @@
     (.addMessageListener conn
                          (packet-listener conn
                                           (with-message-map
-                                            (wrap-responder packet-processor conn)))))
+                                            (wrap-muc-responder packet-processor conn)))))
 
 (defn- create-invitation-message [room inviter reason password message]
   {
@@ -190,7 +194,7 @@
     (if-not room
       (throw (Exception. "Require a room to join.")))
     (let [conn (connect connect-info)
-          muc (join conn room nick packet-processor)]
+          muc (join conn room nick)]
       (add-listener conn packet-processor groupchat-message-type-filter :from)
       muc)))
 
