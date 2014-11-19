@@ -19,9 +19,6 @@
 
 (def muc-join-timeout-ms (long 10000))
 
-
-(defn connection-type [conn & rest] (type conn))
-  
 (defn packet-listener [conn processor]
   (proxy
     [PacketListener]
@@ -67,6 +64,22 @@
     (.println out m)
     (handler m)))
 
+(defn with-message-map [handler]
+  (fn [conn packet]
+    (let [message (message->map #^Message packet)]
+      (handler conn message))))
+
+(defn wrap-errors [handler]
+  (let [out *out*]
+    (fn [conn packet]
+      (try 
+        (handler conn packet)
+        (catch Exception e
+          (.println out "Got an error")
+          (.printStatckTrace e out))))))
+
+(defn connection-type [conn & rest] (type conn))
+
 (defmulti send-message connection-type)
 
 (defmethod send-message XMPPConnection [conn resp]
@@ -74,11 +87,6 @@
 
 (defmethod send-message MultiUserChat [conn resp]
   (.sendMessage conn resp))
-
-(defn with-message-map [handler]
-  (fn [conn packet]
-    (let [message (message->map #^Message packet)]
-        (handler conn message))))
 
 (defn create-packet-listener [conn error-handler message-handler sender ]
   (packet-listener conn (error-handler 
@@ -95,20 +103,11 @@
   (fn [conn message]
     (send-message conn (:response message))))
 
-(defn default-error-handler [handler]
-  (let [out *out*]
-    (fn [conn packet]
-      (try 
-        (handler conn packet)
-        (catch Exception e
-          (.println out "Got an error")
-          (.printStatckTrace e out))))))
-
 (defmulti add-listener connection-type)
 
 (defmethod add-listener XMPPConnection [conn message-handler type-filter address-field & [message-sender error]]
   (let [sender (or message-sender (default-sender conn address-field))
-        error-handler (or error default-error-handler)]
+        error-handler (or error wrap-errors)]
     (.addPacketListener
       conn
       (create-packet-listener conn error-handler message-handler sender )
@@ -116,7 +115,7 @@
 
 (defmethod add-listener MultiUserChat [conn message-handler & [message-sender error]]
   (let [sender (or message-sender (default-sender conn))
-        error-handler (or error default-error-handler)]
+        error-handler (or error wrap-errors)]
     (.addMessageListener conn (create-packet-listener conn error-handler message-handler sender))))
 
 (defn- create-invitation-message [room inviter reason password message]
