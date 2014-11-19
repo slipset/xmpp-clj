@@ -16,8 +16,12 @@
 
 (def no-history
   (doto (DiscussionHistory.) (.setMaxChars 0)))
+
 (def muc-join-timeout-ms (long 10000))
 
+
+(defn connection-type [conn & rest] (type conn))
+  
 (defn packet-listener [conn processor]
   (proxy
     [PacketListener]
@@ -33,96 +37,87 @@
   (some-> (.getExtension m "urn:xmpp:delay") (.getStamp)))
 
 (defn message->map [#^Message m]
-  (try
-    {:body (.getBody m)
-     :subject (.getSubject m)
-     :thread (.getThread m)
-     :from (.getFrom m)
-     :from-name (StringUtils/parseBareAddress (.getFrom m))
-     :from-nick (StringUtils/parseResource (.getFrom m))
-     :to (.getTo m)
-     :packet-id (.getPacketID m)
-     :error (error->map (.getError m))
-     :type (.getType m)
-     :delay (extract-delay m)}
-    (catch Exception e (.printStackTrace e) {})))
+  {:body (.getBody m)
+   :subject (.getSubject m)
+   :thread (.getThread m)
+   :from (.getFrom m)
+   :from-name (StringUtils/parseBareAddress (.getFrom m))
+   :from-nick (StringUtils/parseResource (.getFrom m))
+   :to (.getTo m)
+   :packet-id (.getPacketID m)
+   :error (error->map (.getError m))
+   :type (.getType m)
+   :delay (extract-delay m)})
 
 (defn parse-address [from]
-  (try
-    (first (.split from "/"))
-    (catch Exception e (.printStackTrace e))))
+  (first (.split from "/"))
 
 (defn create-message [to type to-message-body]
-  (try
-    (let [rep (Message. to Message$Type/chat)]
-      (.setBody rep (str to-message-body))
-      (.setType rep type)
-      rep)
-    (catch Exception e (.printStackTrace e))))
+  (doto (Message. to Message$Type/chat)
+    (.setBody (str to-message-body))
+    (.setType type)))
+  
+(defn wrap-responder [handler sender]
+  (fn [conn message]
+    (if-let [resp (handler message)]
+      (sender conn (assoc message :response resp)))))
 
-(defn send-message [conn to type to-message-body]
-  (.sendPacket conn (create-message to type to-message-body)))
+(defn wrap-debug [handler out]
+  (fn [m]
+    (.println out m)
+    (handler m)))
 
-(defn create-reply [from-message-map to-message-body field]
-  (create-message (field from-message-map) (:type from-message-map) to-message-body))
+(defmulti send-message connection-type)
 
-(defn reply [from-message-map to-message-body conn reply-address-field]
-  (send-message conn (create-reply from-message-map to-message-body reply-address-field)))
+(defmethod send-message XMPPConnection [conn resp]
+  (.sendPacket conn resp))
+
+(defmethod send-message MultiUserChat [conn resp]
+  (.sendMessage conn resp))
 
 (defn with-message-map [handler]
   (fn [conn packet]
     (let [message (message->map #^Message packet)]
-      (try
-        (handler conn message)
-        (catch Exception e (.printStackTrace e))))))
+        (handler conn message))))
 
-(defn wrap-responder [handler reply-address-field]
+(defn create-packet-listener [conn error-handler message-handler sender ]
+  (packet-listener conn (error-handler 
+                         (with-message-map
+                           (wrap-responder message-handler sender)))))
+
+(defmulti default-sender connection-type)
+
+(defmethod default-sender XMPPConnection [conn address-field]
   (fn [conn message]
-    (let [resp (handler message)]
-      (when resp
-        (reply message resp conn reply-address-field)))))
+    (send-message conn (create-message (address-field message) (:type message) (:response message)))))
 
-(defn wrap-muc-responder [handler out]
-  (fn [muc message]
-    (if-let [resp (handler message)]
-      (.sendMessage out resp))))
+(defmethod default-sender MultiUserChat [conn ]
+  (fn [conn message]
+    (send-message conn (:response message))))
 
-(defn connect
-  [connect-info]
-  (let [un (:username connect-info)
-        pw (:password connect-info)
-        host (:host connect-info)
-        domain (:domain connect-info)
-        port (get connect-info :port 5222)
-        connect-config (ConnectionConfiguration. host port domain)
-        conn (XMPPConnection. connect-config)]
-    (if-not (and un pw host domain)
-      (throw (Exception. "Required connection params not provided (:username :password :host :domain)")))
-    (.connect conn)
-    (try
-      (.login conn un pw)
-      (catch XMPPException e
-        (throw (Exception. (str "Couldn't log in with user's credentials: "
-                                un
-                                " / "
-                                (apply str (take (count pw) (repeat "*"))))))))
-    (.sendPacket conn available-presence)
-    conn))
+(defn default-error-handler [handler]
+  (let [out *out*]
+    (fn [conn packet]
+      (try 
+        (handler conn packet)
+        (catch Exception e
+          (.println out "Got an error")
+          (.printStatckTrace e out))))))
 
-(defn add-listener [conn packet-processor message-type-filter response-address-field]
-  (.addPacketListener
-    conn
-    (packet-listener conn
-                     (with-message-map
-                       (wrap-responder packet-processor
-                                       response-address-field)))
-    message-type-filter))
+(defmulti add-listener connection-type)
 
-(defn add-muc-listener [conn packet-processor]
-    (.addMessageListener conn
-                         (packet-listener conn
-                                          (with-message-map
-                                            (wrap-muc-responder packet-processor conn)))))
+(defmethod add-listener XMPPConnection [conn message-handler type-filter address-field & [message-sender error]]
+  (let [sender (or message-sender (default-sender conn address-field))
+        error-handler (or error default-error-handler)]
+    (.addPacketListener
+      conn
+      (create-packet-listener conn error-handler message-handler sender )
+      type-filter)))
+
+(defmethod add-listener MultiUserChat [conn message-handler & [message-sender error]]
+  (let [sender (or message-sender (default-sender conn))
+        error-handler (or error default-error-handler)]
+    (.addMessageListener conn (create-packet-listener conn error-handler message-handler sender))))
 
 (defn- create-invitation-message [room inviter reason password message]
   {
@@ -149,6 +144,27 @@
   (add-listener connection packet-processor chat-message-type-filter :from)
   connection)
 
+(defn connect
+  [connect-info]
+  (let [un (:username connect-info)
+        pw (:password connect-info)
+        host (:host connect-info)
+        domain (:domain connect-info)
+        port (get connect-info :port 5222)
+        connect-config (ConnectionConfiguration. host port domain)
+        conn (XMPPConnection. connect-config)]
+    (if-not (and un pw host domain)
+      (throw (Exception. "Required connection params not provided (:username :password :host :domain)")))
+    (.connect conn)
+    (try
+      (.login conn un pw)
+      (catch XMPPException e
+        (throw (Exception. (str "Couldn't log in with user's credentials: "
+                                un
+                                " / "
+                                (apply str (take (count pw) (repeat "*"))))))))
+    (.sendPacket conn available-presence)
+    conn))
 
 (defn start
   "Defines and starts an instant messaging bot that will respond to incoming
@@ -178,8 +194,11 @@
    :type <Type of message: normal, chat, group_chat, headline, error.
    see javadoc for org.jivesoftware.smack.packet.Message>}
    "
-  [connect-info packet-processor]
-  (listen (connect connect-info) packet-processor))
+  [connect-info & [packet-processor]]
+  (let [connection (connect connect-info)]
+    (if packet-processor
+      (listen connection packet-processor)
+      connection)))
 
 (defn join [conn room nick]
   (let [muc (MultiUserChat. conn room)]
