@@ -6,15 +6,7 @@ This version is compatible with hipchat from atlassian.
 
 ## Lein
 
-    [name.benjaminpeter/xmpp-clj "0.3.3"]
-
-## Get the current smack library
-
-    Download http://www.igniterealtime.org/downloadServlet?filename=smack/smack_3_3_0.tar.gz
-    tar xvzf smack_3_3_0.tar.gz
-    cd smack_3_3_0
-    mvn install:install-file -Dfile=smack.jar -DgroupId=jivesoftware -DartifactId=smack -Dversion=3.3.0 -Dpackaging=jar
-    mvn install:install-file -Dfile=smackx.jar -DgroupId=jivesoftware -DartifactId=smackx -Dversion=3.3.0 -Dpackaging=jar
+    [net.assum/xmpp-clj "0.0.1"]
 
 ## Usage
 
@@ -31,13 +23,13 @@ Add xmpp-clj to your deps (project.clj):
 
     (defproject mybot "0.1.0"
       :description "FIXME: write"
-      :dependencies [[xmpp-clj "0.3.1"]])
+      :dependencies [[net.assum/xmpp-clj "0.0.1"]])
 <br />
 
 Open up src/mybot/core.clj and require the xmpp lib:
 
     (ns mybot.core
-      (:require [xmpp-clj :as xmpp]))
+      (:require [xmpp-clj.bot :as xmpp]))
 <br />
 
 Define a handler and start the bot. Handlers accept a single parameter
@@ -47,50 +39,23 @@ example:
 
     ;; This bot always responds with the message 'Ermahgerd!!!'
 
-    (xmpp/start-bot :username "testclojurebot@gmail.com"
-                    :password "clojurebot12345"
-                    :host "talk.google.com"
-                    :domain "gmail.com"
-                    :handler (fn [m] "Ermahgerd!!!")
+    (def config {:host "localhost"
+                 :port 5222
+                 :username "sausagebot"
+                 :domain "localhost"
+                 :password "sausage"
+                 :nick "sausagebot"
+                 :resource "Mr. Sausage"
+                 :room "clojure@conference.clojutre"})
+
+    (def chat (xmpp/start config))
+
+    (def room (xmpp-clj/join chat (:room config) (:nick config)))
+
+    (.sendMessage clojure-room "clojure rocks")
 
 Next, fire up your chat client, add your new bot buddy, and send him /
 her a message.  The response should look someting like this:
-
-> me: hello chatbot
-
-> chatbot: Ermahgerd!!!
-
-<br />
-
-    ;; Stop the bot when you're done:
-
-    (xmpp/stop-bot)
-
-
-
-    ;; You can use a name to start / stop multiple bots in the same
-    ;; process:
-
-    (xmpp/start-bot :name :bot1
-                    :username ...)
-
-    (xmpp/start-bot :name :bot2
-                    :username ...)
-
-    (xmpp/stop-bot :bot1)
-    (xmpp/stop-bot :bot2)
-
-
-
-    ;; And names can be any value / object:
-
-    (xmpp/start-bot :name 0
-                    :username ...)
-
-    (xmpp/start-bot :name 1
-                    :username ...)
-
-
 
 See the `src/xmpp_clj/examples` folder for additional examples,
 including MUC chat. If you'd like to manually manage connections, see
@@ -102,7 +67,7 @@ Use `-Dsmack.debugEnabled=true` to enable xmpp protocol output.
 
 ## Problems?
 
-Open up an [issue](http://github.com/dedeibel/xmpp-clj/issues)
+Open up an [issue](http://github.com/slipset/xmpp-clj/issues)
 
 ## License
 

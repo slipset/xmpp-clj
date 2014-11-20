@@ -1,26 +1,41 @@
 (ns xmpp_clj.examples.muc
-  (require [xmpp-clj :as xmpp]))
+   (:require [xmpp-clj.bot :as xmpp]))
 
-;; Simple jabber bot that responds to MUC chatroom messages This bot
-;; will only responnd to groupchat messages, and it will only respond
-;; *with* groupchat messages.
-(xmpp/start-bot-muc :username "testbot@test.host"
-                    :password "12345"
-                    :host "test.host"
-                    :domain "host"
-                    :nick "testbot"
-                    :room "chatroom@test.host"
-                    :handler (fn [m]
-                               ;; We check that the message was
-                               ;; actually addressed to us, so we
-                               ;; don't respond to our own messages.
-                               ;; That way DoSing the chat server
-                               ;; lies.
-                               ;;
-                               ;; A falsey return value from the
-                               ;; handler function means no response
-                               ;; is sent.
-                               (when (re-find #"^testbot:" (:body m))
-                                 (str "I'm sorry "
-                                      (:from-nick m)
-                                      ", I'm afraid I can't do that."))))
+(def config {:host "localhost"
+             :port 5222
+             :username "sausagebot"
+             :domain "localhost"
+             :password "sausage"
+             :nick "sausagebot"
+             :resource "Mr. Sausage"
+             :room "clojure@conference.clojutre"})
+
+
+(defn from-me? [{:keys [from]}]
+  (.contains from (str (:room config) "/" (:nick config))))
+
+(defn handle-chatter [msg]
+  (let [body {:body msg}]
+    (.contains body "clojure" "Clojure Rocks!")))
+
+(def msgs (atom []))
+
+(defn store-message [message] (swap! msgs conj message))
+
+(def message-listener (-> handle-chatter
+                          (xmpp/wrap-tee store-message)
+                          (xmpp/wrap-remove-message from-me?)))
+(comment 
+  (reset! msgs [])
+  (.disconnect chat)
+  (def out *out*)
+  (def chat (xmpp/start config))
+  (def clojure-room (xmpp/join chat (:room config) (:nick config)))
+
+  (.sendMessage clojure-room "clojure rocks")
+
+  (xmpp/add-listener clojure-room (xmpp/default-processor
+                                        #'message-listener
+                                          (xmpp/create-sender :response)
+                                            (xmpp/wrap-errors out)))
+)

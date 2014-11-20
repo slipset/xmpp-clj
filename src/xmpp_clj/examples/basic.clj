@@ -1,39 +1,40 @@
 (ns xmpp_clj.examples.basic
-  (:use [clojure.test])
-  (:require [xmpp-clj :as xmpp]))
+   (:require [xmpp-clj.bot :as xmpp]))
 
-;; Simple jabber bot that responds back with message text
+(def config {:host "localhost"
+             :port 5222
+             :username "sausagebot"
+             :domain "localhost"
+             :password "sausage"
+             :nick "sausagebot"
+             :resource "Mr. Sausage"
+             :room "clojure@conference.clojutre"})
 
-;; Important stuff
-(defn handle-message [message]
-  (let [body (:body message)
-	from-user (:from-name message)]
-    (str "Hi " from-user ", you sent me '" body "'")))
 
-(xmpp/start-bot :name :awesome-bot
-                :username "testclojurebot@gmail.com"
-                :password "clojurebot12345"
-                :host "talk.google.com"
-                :domain "gmail.com"
-                :handler (var handle-message))
+(defn from-me? [{:keys [from]}]
+  (.contains from (str (:room config) "/" (:nick config))))
 
-;; With the request / response details abstracted away from you, you
-;; can focus on your bot's logic.  Testing is simplified down to
-;; sending maps through your handler function and checking the output.
+(defn handle-chatter [msg]
+  (let [body {:body msg}]
+    (.contains body "clojure" "Clojure Rocks!")))
 
-(def test-message {:subject nil
-                   :from "zachary.kim@gmail.com/gmail.3167A379"
-                   :to "testclojurebot@gmail.com"
-                   :thread nil
-                   :error nil
-                   :packet-id "5A19D18217BBD43_1"
-                   :type :chat
-                   :from-name "zachary.kim@gmail.com"
-                   :body "hello world"})
+(def msgs (atom []))
 
-(defn say-hi-handler [message]
-  (str "Hey there, " (:body message) "."))
+(defn store-message [message] (swap! msgs conj message))
 
-(deftest test-handle-message
-  (is (= (say-hi-handler {:body "zk"})
-         "Hey there, zk.")))
+(def message-listener (-> handle-chatter
+                          (xmpp/wrap-tee store-message)
+                          (xmpp/wrap-remove-message from-me?)))
+(comment 
+  (reset! msgs [])
+  (.disconnect chat)
+  (def out *out*)
+  (def chat (xmpp/start config))
+
+  (.sendMessage clojure-room "clojure rocks")
+
+  (xmpp/add-listener chat (xmpp/default-processor
+                            #'message-listener
+                              (xmpp/create-sender (partial xmpp/create-message :from-name))
+                              (xmpp/wrap-errors out)) org.jivesoftware.smack.packet.Message$Type/chat)
+)
