@@ -37,7 +37,7 @@ Define a handler and start the bot. Handlers accept a single parameter
 to the sender. Return `nil` to omit a response.  Here's a very simple
 example:
 
-    ;; This bot always responds with the message 'Ermahgerd!!!'
+    ;; This bot does not respond.
 
     (def config {:host "localhost"
                  :port 5222
@@ -58,8 +58,7 @@ Next, fire up your chat client, add your new bot buddy, and send him /
 her a message.  The response should look someting like this:
 
 See the `src/xmpp_clj/examples` folder for additional examples,
-including MUC chat. If you'd like to manually manage connections, see
-the `xmpp-clj.bot` namespace.
+including MUC chat.
 
 ## Debugging
 
