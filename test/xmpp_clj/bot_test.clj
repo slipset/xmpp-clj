@@ -16,7 +16,7 @@
     (let [to "myuser"
           type Message$Type/chat
           body "foo"
-          message (create-message to type body)]
+          message (create-message :from {:from to :type type :response body})]
       (is (= body (.getBody message)))
       (is (= type (.getType message)))
       (is (= to (.getTo message))))))
@@ -35,10 +35,3 @@
 (deftest test-connection-type
   (testing "that connection-type returns the correct type"
     (is (= String (connection-type "s" :a :b :c)))))
-             
-      
-    
-  
-          
-
-    

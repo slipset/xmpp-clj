@@ -47,38 +47,65 @@
    :delay (extract-delay m)})
 
 (defn parse-address [from]
-  (first (.split from "/"))
+  (first (.split from "/")))
 
-(defn create-message [to type to-message-body]
-  (doto (Message. to Message$Type/chat)
-    (.setBody (str to-message-body))
-    (.setType type)))
+(defn create-message [from-field msg]
+  (doto (Message. (from-field msg) Message$Type/chat)
+    (.setBody (str (:response msg)))
+    (.setType (:type msg))))
   
 (defn wrap-responder [handler sender]
   (fn [conn message]
-    (if-let [resp (handler message)]
+    (if-let [resp (handler conn message)]
       (sender conn (assoc message :response resp)))))
-
-(defn wrap-debug [handler out]
-  (fn [m]
-    (.println out m)
-    (handler m)))
 
 (defn with-message-map [handler]
   (fn [conn packet]
     (let [message (message->map #^Message packet)]
       (handler conn message))))
 
-(defn wrap-errors [handler]
-  (let [out *out*]
-    (fn [conn packet]
-      (try 
-        (handler conn packet)
-        (catch Exception e
-          (.println out "Got an error")
-          (.printStatckTrace e out))))))
+(defn wrap-remove-connection [handler]
+  (fn [conn msg]
+    (handler msg)))
 
-(defn connection-type [conn & rest] (type conn))
+(defn wrap-store-msg [handler storer]
+  (fn [m]
+    (storer m)
+    (handler m)))
+
+(defn wrap-debug [handler out]
+  (fn [m]
+    (.println out m)
+    (handler m)))
+
+(defn wrap-remove-message [handler p]
+  (fn [message]
+    (when-not (p message)
+      (handler message))))
+
+(defn wrap-errors [handler out]
+  (fn [conn packet]
+    (try 
+      (handler conn packet)
+      (catch Exception e
+        (.println out "Got an error")
+        (.printStackTrace e out)))))
+
+(defn- noop [handler]
+  (fn [conn packet]
+    (handler conn packet)))
+
+(defn dev-null []
+  (fn [conn msg]))
+
+(defn default-processor [in out & [error-handler]]
+  (let [wrap-errors (or error-handler
+                        noop)]
+    (-> in
+        (wrap-remove-connection)
+        (wrap-responder out)
+        (with-message-map)
+        (wrap-errors))))
 
 (defmulti send-message connection-type)
 
@@ -88,35 +115,24 @@
 (defmethod send-message MultiUserChat [conn resp]
   (.sendMessage conn resp))
 
-(defn create-packet-listener [conn error-handler message-handler sender ]
-  (packet-listener conn (error-handler 
-                         (with-message-map
-                           (wrap-responder message-handler sender)))))
-
-(defmulti default-sender connection-type)
-
-(defmethod default-sender XMPPConnection [conn address-field]
-  (fn [conn message]
-    (send-message conn (create-message (address-field message) (:type message) (:response message)))))
-
-(defmethod default-sender MultiUserChat [conn ]
-  (fn [conn message]
-    (send-message conn (:response message))))
+(defn create-sender [message-creator]
+  (fn [conn msg]
+    (->> msg
+         (message-creator)
+         (send-message conn))))
 
 (defmulti add-listener connection-type)
 
-(defmethod add-listener XMPPConnection [conn message-handler type-filter address-field & [message-sender error]]
-  (let [sender (or message-sender (default-sender conn address-field))
-        error-handler (or error wrap-errors)]
-    (.addPacketListener
-      conn
-      (create-packet-listener conn error-handler message-handler sender )
-      type-filter)))
+(defmethod add-listener XMPPConnection [conn processor type-filter]
+  (.addPacketListener
+    conn
+    (packet-listener conn processor)
+    type-filter))
 
-(defmethod add-listener MultiUserChat [conn message-handler & [message-sender error]]
-  (let [sender (or message-sender (default-sender conn))
-        error-handler (or error wrap-errors)]
-    (.addMessageListener conn (create-packet-listener conn error-handler message-handler sender))))
+(defmethod add-listener MultiUserChat [conn processor]
+  (.addMessageListener
+    conn
+    (packet-listener conn processor)))
 
 (defn- create-invitation-message [room inviter reason password message]
   {
@@ -140,8 +156,8 @@
                          reason))
 
 (defn listen [connection packet-processor]
-  (add-listener connection packet-processor chat-message-type-filter :from)
-  connection)
+  (add-listener connection (default-processor packet-processor
+                             (create-sender (partial create-message :from)))))
 
 (defn connect
   [connect-info]
@@ -213,7 +229,7 @@
       (throw (Exception. "Require a room to join.")))
     (let [conn (connect connect-info)
           muc (join conn room nick)]
-      (add-listener conn packet-processor groupchat-message-type-filter :from)
+      (add-listener conn packet-processor chat-message-type-filter :from)
       muc)))
 
 (defn stop [#^XMPPConnection conn]
