@@ -83,13 +83,14 @@
     (when-not (p message)
       (handler message))))
 
-(defn wrap-errors [handler out]
-  (fn [conn packet]
-    (try 
-      (handler conn packet)
-      (catch Exception e
-        (.println out "Got an error")
-        (.printStackTrace e out)))))
+(defn wrap-errors [out]
+  (fn [handler]
+    (fn [conn packet]
+      (try 
+        (handler conn packet)
+        (catch Exception e
+          (.println out "Got an error")
+          (.printStackTrace e out))))))
 
 (defn- noop [handler]
   (fn [conn packet]
