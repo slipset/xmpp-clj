@@ -68,14 +68,9 @@
   (fn [conn msg]
     (handler msg)))
 
-(defn wrap-store-msg [handler storer]
+(defn wrap-tee [handler f]
   (fn [m]
-    (storer m)
-    (handler m)))
-
-(defn wrap-debug [handler out]
-  (fn [m]
-    (.println out m)
+    (f m)
     (handler m)))
 
 (defn wrap-remove-message [handler p]
@@ -212,9 +207,9 @@
    "
   [connect-info & [packet-processor]]
   (let [connection (connect connect-info)]
-    (if packet-processor
-      (listen connection packet-processor)
-      connection)))
+    (when packet-processor
+      (listen connection packet-processor))
+    connection))
 
 (defn join [conn room nick]
   (let [muc (MultiUserChat. conn room)]
