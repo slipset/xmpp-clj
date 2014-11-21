@@ -56,22 +56,24 @@
   
 (defn wrap-responder [handler sender]
   (fn [conn message]
-    (if-let [resp (handler conn message)]
-      (sender conn (assoc message :response resp)))))
+    (some->> (handler conn message)
+    (assoc message :response)
+    (sender conn ))))
 
 (defn with-message-map [handler]
   (fn [conn packet]
-    (let [message (message->map #^Message packet)]
-      (handler conn message))))
+    (->> packet
+     (message->map)
+     (handler conn))))
 
 (defn wrap-remove-connection [handler]
-  (fn [conn msg]
-    (handler msg)))
+  (fn [conn message]
+    (handler message)))
 
 (defn wrap-tee [handler f]
-  (fn [m]
-    (f m)
-    (handler m)))
+  (fn [message]
+    (f message)
+    (handler message)))
 
 (defn wrap-remove-message [handler p]
   (fn [message]
@@ -95,8 +97,7 @@
   (fn [conn msg]))
 
 (defn default-processor [in out & [error-handler]]
-  (let [wrap-errors (or error-handler
-                        noop)]
+  (let [wrap-errors (or error-handler noop)]
     (-> in
         (wrap-remove-connection)
         (wrap-responder out)
@@ -115,8 +116,8 @@
   (.sendMessage conn resp))
 
 (defn create-sender [message-creator]
-  (fn [conn msg]
-    (->> msg
+  (fn [conn message]
+    (->> message
          (message-creator)
          (send-message conn))))
 
@@ -154,82 +155,36 @@
                          (:inviter invitation)
                          reason))
 
-(defn listen [connection packet-processor]
-  (add-listener connection (default-processor packet-processor
-                             (create-sender (partial create-message :from)))))
 
-(defn connect
-  [connect-info]
-  (let [un (:username connect-info)
-        pw (:password connect-info)
-        host (:host connect-info)
-        domain (:domain connect-info)
-        port (get connect-info :port 5222)
-        connect-config (ConnectionConfiguration. host port domain)
-        conn (XMPPConnection. connect-config)]
-    (if-not (and un pw host domain)
-      (throw (Exception. "Required connection params not provided (:username :password :host :domain)")))
+(defn cfg->conn [{:keys [host port domain] :or {port 5222}}]
+  (-> (ConnectionConfiguration. host port domain)
+      (XMPPConnection.)))
+
+(defn format-error [username password]
+  (str "Couldn't log in with user's credentials: "
+       username
+       " / "
+       (apply str (take (count password) (repeat "*")))))
+
+(defn do-connect [conn {:keys [username password]}]
     (.connect conn)
     (try
-      (.login conn un pw)
+      (.login conn username password)
+      (.sendPacket conn available-presence)
+      conn
       (catch XMPPException e
-        (throw (Exception. (str "Couldn't log in with user's credentials: "
-                                un
-                                " / "
-                                (apply str (take (count pw) (repeat "*"))))))))
-    (.sendPacket conn available-presence)
-    conn))
-
-(defn start
-  "Defines and starts an instant messaging bot that will respond to incoming
-   messages. `start` takes 2 parameters, the first is a map representing
-   the data needed to make a connection to the jabber server:
-
-   connnect-info example:
-   {:host \"talk.google.com\"
-  :domain \"gmail.com\"
-  :username \"testclojurebot@gmail.com\"
-  :password \"clojurebot12345\"}
-
-   The second parameter expects a single-arg function, which is passed
-   a map representing a message on receive. Return a string from this
-   function to pass a message back to the sender, or nil for no
-   response
-
-   received message map example (nils are possible where n/a):
-   {:body
-   :subject
-   :thread <Id used to correlate several messages, such as a converation>
-   :from <entire from id, ex. zachary.kim@gmail.com/Zachary KiE0124793>
-   :from-name <Just the 'name' from the 'from', ex. zachary.kim@gmail.com>
-   :to <To whom the message was sent, i.e. this bot>
-   :packet-id <donno>
-   :error <a map representing the error, if present>
-   :type <Type of message: normal, chat, group_chat, headline, error.
-   see javadoc for org.jivesoftware.smack.packet.Message>}
-   "
-  [connect-info & [packet-processor]]
-  (let [connection (connect connect-info)]
-    (when packet-processor
-      (listen connection packet-processor))
-    connection))
+        (throw (Exception. (format-error username password))))))
+  
+(defn connect [{:keys [username password host domain port] :as config}]
+  (if-not (and username password host domain)
+    (throw (Exception. "Required connection params not provided (:username :password :host :domain)")))
+  (-> (cfg->conn config)
+      (do-connect config)))
 
 (defn join [conn room nick]
   (let [muc (MultiUserChat. conn room)]
     (.join muc nick nil no-history muc-join-timeout-ms)
     muc))
-    
-(defn start-muc
-  [connect-info packet-processor]
-  (let [room (:room connect-info)
-        nick (:nick connect-info)
-        actual-nick (or nick (:username connect-info))]
-    (if-not room
-      (throw (Exception. "Require a room to join.")))
-    (let [conn (connect connect-info)
-          muc (join conn room nick)]
-      (add-listener conn packet-processor chat-message-type-filter :from)
-      muc)))
 
 (defn stop [#^XMPPConnection conn]
   (when conn

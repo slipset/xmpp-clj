@@ -35,3 +35,44 @@
 (deftest test-connection-type
   (testing "that connection-type returns the correct type"
     (is (= String (connection-type "s" :a :b :c)))))
+
+(deftest test-cfg->conn
+  (testing "that we're getting the correct stuff back"
+    (is (= (type (cfg->conn {:host "foo" :domain "bar"})) XMPPConnection))))
+
+(deftest test-connect
+  (testing "that an exception is thrown if required params are not present"
+    (is (thrown? Exception (connect {}))))
+
+  (testing "that the connect function works as expected"
+    (with-redefs-fn {#'do-connect (fn [conn credentials] credentials)}
+      #(let [cfg {:username "foo"
+                  :password "bar"
+                  :host "localhost"
+                  :domain "localhost"}]
+         (is (= (connect cfg) cfg))))))
+
+(deftest test-create-sender
+  (testing "that it works"
+    (with-redefs-fn {#'send-message (fn [conn msg] msg)}
+      #(let [fun (create-sender identity)]
+         (is (= (fun nil 1) 1))))))
+
+(deftest test-wrap-remove-connection
+  (testing "that it removes the connection in the handler chain"
+    (let [fun (wrap-remove-connection identity)]
+      (is (= (fun nil 1) 1)))))
+
+(deftest test-wrap-remove-message
+  (testing "that wrap-remove-message works"
+    (let [fun (wrap-remove-message identity (fn [m] (= m 2)))]
+      (is (= (fun 1) 1))
+      (is (= (fun 2) nil)))))
+
+(deftest test-with-message-map
+  (testing "that we get a map from a message"
+    (let [msg (create-message :from {:response "foo" :type Message$Type/chat})
+          mapfn (with-message-map (fn [conn msg] msg))
+          result (mapfn nil msg)]
+      (is (= (:body result) "foo"))
+      (is (= (:type result) Message$Type/chat)))))
