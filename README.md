@@ -6,7 +6,7 @@ This version is compatible with hipchat from atlassian.
 
 ## Lein
 
-    [net.assum/xmpp-clj "0.0.1"]
+    [net.assum/xmpp-clj "0.0.2"]
 
 ## Usage
 
