@@ -23,12 +23,12 @@
       
 (deftest test-wrap-responder
   (testing "that sender is called when a message is returned"
-    (let [fn (wrap-responder #(% "foo") (fn [conn msg] msg))]
+    (let [fn (wrap-responder (fn [conn msg] "foo") (fn [conn msg] msg))]
       (is (function? fn))
       (is (= (:response (fn nil {}) "foo")))))
   
   (testing "that sender is not called when a message is not returned"
-    (let [fn (wrap-responder #(% nil) #(%1 %2))]
+    (let [fn (wrap-responder (fn [conn msg] nil) #(%1 %2))]
       (is (function? fn))
       (is (not (fn nil {}))))))
 

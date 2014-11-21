@@ -103,6 +103,9 @@
         (with-message-map)
         (wrap-errors))))
 
+(defn connection-type [conn & rest]
+  (type conn))
+
 (defmulti send-message connection-type)
 
 (defmethod send-message XMPPConnection [conn resp]
